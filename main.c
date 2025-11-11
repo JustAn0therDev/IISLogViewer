@@ -253,7 +253,7 @@ int main(void) {
         arrayOfCellBuffersIndex = 0;
     }
     
-    //free(arrayOfCellBuffers);
+    free(arrayOfCellBuffers);
     free(logFileContent);
     fclose(file);
     Clay_Raylib_Close();
