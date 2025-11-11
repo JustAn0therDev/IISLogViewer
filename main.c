@@ -14,6 +14,7 @@ const Clay_BorderElementConfig BLACK_BORDER = { .width = { .left = 5, .right = 5
 #endif
 
 #define CELL_DELIMITER " "
+#define CELL_CHAR_LIMIT 10
 
 void HandleClayErrors(Clay_ErrorData errorData) {
     printf("%s", errorData.errorText.chars);
@@ -62,51 +63,21 @@ char* ReadFileContent(FILE* file) {
     return fileBuffer;
 }
 
-void RenderFileCells(char* line) {
-    // The 1024 value might be too much, but it'll do for now.
-    char cellBuffer[1024] = { 0 };
-    int cellBufferIndex = 0;
+// NOTES: For now, this considers the four metadata lines of an IIS log file, so it
+// allocates more than it actually needs. Its ok for this to stay for now, it'll hardly be
+// that much more memory anyway.
+size_t CountCellsInFile(char* string, char find) {
+    size_t count = 0;
     
-    char* linePtr = line;
-    
-    while (*linePtr != '\0') {
-        if (*linePtr != ' ') {
-            cellBuffer[cellBufferIndex++] = *linePtr;
-        } else {
-            // This might cause me a null pointer problem down the line.
-            // Yep, its here.
-            Clay_String clayString = { .chars = cellBuffer, .length = cellBufferIndex + 1 };
-            RenderTextComponent(clayString);
-            cellBufferIndex = 0;
-            for (int i = 0; i < 1024; i++) cellBuffer[i] = 0;
+    while (*string != '\0') {
+        if (*string == find) {
+            count++;
         }
         
-        linePtr++;
+        string++;
     }
-}
-
-void RenderFileLines(char* fileContent) {
-    char* line = strtok(fileContent, LINE_DELIMITER);
     
-    while (line != 0) {
-        //printf("%s\n", line);
-        if (line[0] != '#') {
-            CLAY_AUTO_ID({.layout = {
-                                 .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                                 .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(0) },
-                                 .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER },
-                                 .childGap = 5
-                             },
-                             .border = { .width = { .bottom = 1  }, .color = {0,0,0,255} },
-                         }) {
-                // Each cell value needs to be truncated for visualization,
-                // but the search can be made for a whole value, despite
-                // of its size.
-                RenderFileCells(line);
-            }
-        }
-        line = strtok(0, LINE_DELIMITER);
-    }
+    return count;
 }
 
 int main(void) {
@@ -122,19 +93,23 @@ int main(void) {
     SetTextureFilter(fonts[FONT_ID_BODY_16].texture, TEXTURE_FILTER_BILINEAR);
     Clay_SetMeasureTextFunction(Raylib_MeasureText, fonts);
     
+    FILE* file = fopen("../example_log.txt", "r");
+    char* logFileContent = ReadFileContent(file);
+    size_t logFileContentSize = strlen(logFileContent);
+    size_t cellsInFile = CountCellsInFile(logFileContent, ' ');
+    char** arrayOfCellBuffers = calloc(sizeof(char*), cellsInFile);
+    
     while (!WindowShouldClose()) {
-        FILE* file = fopen("../example_log.txt", "r");
-        char* arrayOfBuffers[1024] = { 0 };
-        int arrayOfBuffersIndex = 0;
+        int arrayOfCellBuffersIndex = 0;
         int numberOfValidLinesInFile = 0;
+        int numberOfCells = 0;
         
-        char* logFileContent = ReadFileContent(file);
         Clay_SetLayoutDimensions((Clay_Dimensions){.width = GetScreenWidth(), .height = GetScreenHeight()});
         
         Vector2 mousePosition = GetMousePosition();
         Vector2 scrollDelta = GetMouseWheelMoveV();
         Clay_SetPointerState((Clay_Vector2){mousePosition.x, mousePosition.y},IsMouseButtonDown(0));
-        Clay_UpdateScrollContainers(true, (Clay_Vector2){scrollDelta.x, scrollDelta.y}, GetFrameTime());
+        Clay_UpdateScrollContainers(false, (Clay_Vector2){scrollDelta.x, scrollDelta.y}, GetFrameTime());
         
         Clay_BeginLayout();
         
@@ -204,11 +179,9 @@ int main(void) {
                      }) {
                     
                     // lines
-                    // Each cell value needs to be truncated for visualization,
-                    // but the search can be made for a whole value, despite
-                    // of its size.
-                    char* fileContent = logFileContent;
-                    char* line = strtok(fileContent, LINE_DELIMITER);
+                    char* fileContentCpy = calloc(sizeof(char), logFileContentSize + 1);
+                    strcpy(fileContentCpy, logFileContent);
+                    char* line = strtok(fileContentCpy, LINE_DELIMITER);
                     
                     while (line != 0) {
                         if (line[0] != '#') {
@@ -221,24 +194,22 @@ int main(void) {
                                              },
                                              .border = { .width = { .bottom = 1  }, .color = {0,0,0,255} },
                                          }) {
-                                char* cellBuffer = calloc(sizeof(char), 1024);
                                 int cellBufferIndex = 0;
-                                
-                                arrayOfBuffers[arrayOfBuffersIndex++] = cellBuffer;
+                                arrayOfCellBuffers[arrayOfCellBuffersIndex] = calloc(sizeof(char), CELL_CHAR_LIMIT + 1);
                                 
                                 char* linePtr = line;
                                 
                                 while (*linePtr != '\0') {
                                     if (*linePtr != ' ') {
-                                        if (cellBufferIndex < 10) { // truncate value
-                                            cellBuffer[cellBufferIndex++] = *linePtr;
+                                        if (cellBufferIndex < CELL_CHAR_LIMIT) {
+                                            arrayOfCellBuffers[arrayOfCellBuffersIndex][cellBufferIndex++] = *linePtr;
                                         }
                                     } else {
-                                        Clay_String clayString = { .chars = cellBuffer, .length = cellBufferIndex + 1 };
+                                        numberOfCells++;
+                                        Clay_String clayString = { .chars = arrayOfCellBuffers[arrayOfCellBuffersIndex], .length = cellBufferIndex + 1 };
                                         RenderTextComponent(clayString);
                                         cellBufferIndex = 0;
-                                        cellBuffer = calloc(sizeof(char), 1024);
-                                        arrayOfBuffers[arrayOfBuffersIndex++] = cellBuffer;
+                                        arrayOfCellBuffers[++arrayOfCellBuffersIndex] = calloc(sizeof(char), CELL_CHAR_LIMIT + 1);
                                     }
                                     
                                     linePtr++;
@@ -247,6 +218,8 @@ int main(void) {
                         }
                         line = strtok(0, LINE_DELIMITER);
                     }
+                    
+                    free(fileContentCpy);
                 }
             }
             
@@ -269,14 +242,19 @@ int main(void) {
         Clay_Raylib_Render(renderCommands, fonts);
         EndDrawing();
         
-        for (int i = 0; i < 1024; i++) {
-            if (arrayOfBuffers[i] != 0)  {
-                free(arrayOfBuffers[i]);
-                arrayOfBuffers[i] = 0;
+        
+        for (int i = 0; i < numberOfCells; i++) {
+            if (arrayOfCellBuffers[i] != 0)  {
+                free(arrayOfCellBuffers[i]);
+                arrayOfCellBuffers[i] = 0;
             }
         }
-        fclose(file);
+        
+        arrayOfCellBuffersIndex = 0;
     }
     
+    //free(arrayOfCellBuffers);
+    free(logFileContent);
+    fclose(file);
     Clay_Raylib_Close();
 }
