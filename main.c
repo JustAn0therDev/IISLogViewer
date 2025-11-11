@@ -13,7 +13,7 @@ const Clay_BorderElementConfig BLACK_BORDER = { .width = { .left = 5, .right = 5
 #define LINE_DELIMITER "\n"
 #endif
 
-#define CELL_DELIMITER " "
+#define CELL_DELIMITER ' '
 #define CELL_CHAR_LIMIT 10
 
 void HandleClayErrors(Clay_ErrorData errorData) {
@@ -66,11 +66,11 @@ char* ReadFileContent(FILE* file) {
 // NOTES: For now, this considers the four metadata lines of an IIS log file, so it
 // allocates more than it actually needs. Its ok for this to stay for now, it'll hardly be
 // that much more memory anyway.
-size_t CountCellsInFile(char* string, char find) {
+size_t CountCellsInFile(char* string) {
     size_t count = 0;
     
     while (*string != '\0') {
-        if (*string == find) {
+        if (*string == CELL_DELIMITER) {
             count++;
         }
         
@@ -96,7 +96,7 @@ int main(void) {
     FILE* file = fopen("../example_log.txt", "r");
     char* logFileContent = ReadFileContent(file);
     size_t logFileContentSize = strlen(logFileContent);
-    size_t cellsInFile = CountCellsInFile(logFileContent, ' ');
+    size_t cellsInFile = CountCellsInFile(logFileContent);
     char** arrayOfCellBuffers = calloc(sizeof(char*), cellsInFile);
     
     while (!WindowShouldClose()) {
@@ -200,7 +200,7 @@ int main(void) {
                                 char* linePtr = line;
                                 
                                 while (*linePtr != '\0') {
-                                    if (*linePtr != ' ') {
+                                    if (*linePtr != CELL_DELIMITER) {
                                         if (cellBufferIndex < CELL_CHAR_LIMIT) {
                                             arrayOfCellBuffers[arrayOfCellBuffersIndex][cellBufferIndex++] = *linePtr;
                                         }
