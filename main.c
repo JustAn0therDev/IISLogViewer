@@ -64,14 +64,15 @@ char* ReadFileContent(FILE* file) {
     return fileBuffer;
 }
 
-// NOTES: For now, this considers every four metadata lines of an IIS log file, so it
-// allocates more than it actually needs. Its ok for this to stay for now, it'll hardly be
+// NOTES: For now, this considers every four metadata lines of an IIS log file, so we
+// end up allocating more memory than we actually need. Its ok for this to stay for now, it'll hardly be
 // that much more memory anyway.
 size_t CountCellsInFile(char* string) {
     size_t count = 0;
     
     while (*string != '\0') {
-        if (*string == CELL_DELIMITER) {
+        int isACellInTheMiddleOrEndOfTheLine = *string == CELL_DELIMITER || *string == '\n';
+        if (isACellInTheMiddleOrEndOfTheLine) {
             count++;
         }
         
@@ -94,7 +95,7 @@ int main(void) {
     SetTextureFilter(fonts[FONT_ID_BODY_16].texture, TEXTURE_FILTER_BILINEAR);
     Clay_SetMeasureTextFunction(Raylib_MeasureText, fonts);
     
-    FILE* file = fopen("../example_log.txt", "r");
+    FILE* file = fopen("../example_log.txt", "r"); // TODO: read the file path from args
     char* logFileContent = ReadFileContent(file);
     size_t logFileContentSize = strlen(logFileContent);
     size_t cellsInFile = CountCellsInFile(logFileContent);
@@ -204,7 +205,7 @@ int main(void) {
                                             arrayOfCellBuffers[arrayOfCellBuffersIndex][cellBufferIndex++] = *linePtr;
                                         }
                                     } else {
-                                        numberOfCells++; // fix this memory leak. the last cells are not being freed
+                                        numberOfCells++;
                                         Clay_String clayString = { .chars = arrayOfCellBuffers[arrayOfCellBuffersIndex], .length = cellBufferIndex + 1 };
                                         RenderTextComponent(clayString);
                                         cellBufferIndex = 0;
@@ -212,7 +213,9 @@ int main(void) {
                                     }
                                     linePtr++;
                                 }
+                                numberOfCells++;
                                 Clay_String clayString = { .chars = arrayOfCellBuffers[arrayOfCellBuffersIndex], .length = cellBufferIndex + 1 };
+                                arrayOfCellBuffersIndex++;
                                 RenderTextComponent(clayString);
                             }
                         }
@@ -244,7 +247,6 @@ int main(void) {
         
         for (int i = 0; i < numberOfCells; i++) {
             if (arrayOfCellBuffers[i] != 0)  {
-                printf("Cleaning: %s\n", arrayOfCellBuffers[i]);
                 free(arrayOfCellBuffers[i]);
                 arrayOfCellBuffers[i] = 0;
             }
@@ -253,8 +255,15 @@ int main(void) {
         arrayOfCellBuffersIndex = 0;
     }
     
+    for (int i = 0; i < cellsInFile; i++) {
+        if (arrayOfCellBuffers[i] != 0)  {
+            free(arrayOfCellBuffers[i]);
+            arrayOfCellBuffers[i] = 0;
+        }
+    }
     free(arrayOfCellBuffers);
     free(logFileContent);
     fclose(file);
+    UnloadFont(fonts[FONT_ID_BODY_16]);
     Clay_Raylib_Close();
 }
