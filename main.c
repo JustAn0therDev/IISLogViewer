@@ -2,10 +2,11 @@
 #include "include/clay.h"
 #include "renderers/raylib/clay_renderer_raylib.c"
 #include <stdio.h>
-#include <ctype.h>
 
 const int FONT_ID_BODY_16 = 0;
-const Clay_BorderElementConfig BLACK_BORDER = { .width = { .left = 5, .right = 5, .top = 5, .bottom = 5  }, .color = {0,0,0,255} };
+const Clay_Color FOREGROUND_COLOR = {0,200,0,255};
+const Clay_Color BACKGROUND_COLOR = {0,0,0,255};
+const Clay_BorderElementConfig BORDER_COLOR = { .width = { .left = 5, .right = 5, .top = 5, .bottom = 5  }, .color = FOREGROUND_COLOR };
 
 #ifdef _WIN32
 #define LINE_DELIMITER "\r\n"
@@ -25,13 +26,13 @@ void RenderTextComponent(Clay_String text) {
                      .layout = {
                          .padding = CLAY_PADDING_ALL(16),
                          .sizing = { .width = CLAY_SIZING_GROW(100), .height = CLAY_SIZING_GROW(0) },
-                         .childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER }
-                     }
+                         .childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER },
+                     },
                  }) {
         CLAY_TEXT(text, CLAY_TEXT_CONFIG({
                                              .fontId = FONT_ID_BODY_16,
                                              .fontSize = 16,
-                                             .textColor = { 0, 0, 0, 255 }
+                                             .textColor = FOREGROUND_COLOR
                                          }));
     }
 }
@@ -63,7 +64,7 @@ char* ReadFileContent(FILE* file) {
     return fileBuffer;
 }
 
-// NOTES: For now, this considers the four metadata lines of an IIS log file, so it
+// NOTES: For now, this considers every four metadata lines of an IIS log file, so it
 // allocates more than it actually needs. Its ok for this to stay for now, it'll hardly be
 // that much more memory anyway.
 size_t CountCellsInFile(char* string) {
@@ -120,14 +121,14 @@ int main(void) {
                      .padding = {1,1,1,1},
                      .childGap = 10
                  },
-                 .backgroundColor = {255,255,255,255}
+                 .backgroundColor = BACKGROUND_COLOR
              }) {
             
             CLAY(CLAY_ID("SearchBar"), {
                      .layout = {
-                         .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(50)}
+                         .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)}
                      },
-                     .border = BLACK_BORDER,
+                     .border = BORDER_COLOR,
                      .cornerRadius = CLAY_CORNER_RADIUS(10)
                  }) {
                 RenderTextComponent(CLAY_STRING("SEARCH"));
@@ -138,14 +139,14 @@ int main(void) {
                          .layoutDirection = CLAY_TOP_TO_BOTTOM,
                          .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0) }
                      },
-                     .border = BLACK_BORDER,
+                     .border = BORDER_COLOR,
                      .cornerRadius = CLAY_CORNER_RADIUS(10),
                  }) {
                 // header
                 CLAY(CLAY_ID("TableHeader"), {
                          .layout = {
                              .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                             .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(0) },
+                             .sizing = { .width = CLAY_SIZING_GROW(100), .height = CLAY_SIZING_FIXED(0) },
                              .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER },
                              .childGap = 5
                          },
@@ -171,9 +172,9 @@ int main(void) {
                 CLAY(CLAY_ID("TableLines"), {
                          .layout = {
                              .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                             .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER },
                              .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0) }
                          },
-                         .border = { .width = { .bottom = 1, .left = 1, .right = 1  }, .color = {0,0,0,255} },
                          .cornerRadius = CLAY_CORNER_RADIUS(10),
                          .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() }
                      }) {
@@ -187,12 +188,10 @@ int main(void) {
                         if (line[0] != '#') {
                             numberOfValidLinesInFile++;
                             CLAY_AUTO_ID({.layout = {
-                                                 .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                                                 .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(0) },
+                                                 .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0) },
                                                  .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER },
-                                                 .childGap = 5
                                              },
-                                             .border = { .width = { .bottom = 1  }, .color = {0,0,0,255} },
+                                             .border = { .width = { .bottom = 1 }, .color = FOREGROUND_COLOR },
                                          }) {
                                 int cellBufferIndex = 0;
                                 arrayOfCellBuffers[arrayOfCellBuffersIndex] = calloc(sizeof(char), CELL_CHAR_LIMIT + 1);
@@ -205,15 +204,16 @@ int main(void) {
                                             arrayOfCellBuffers[arrayOfCellBuffersIndex][cellBufferIndex++] = *linePtr;
                                         }
                                     } else {
-                                        numberOfCells++;
+                                        numberOfCells++; // fix this memory leak. the last cells are not being freed
                                         Clay_String clayString = { .chars = arrayOfCellBuffers[arrayOfCellBuffersIndex], .length = cellBufferIndex + 1 };
                                         RenderTextComponent(clayString);
                                         cellBufferIndex = 0;
                                         arrayOfCellBuffers[++arrayOfCellBuffersIndex] = calloc(sizeof(char), CELL_CHAR_LIMIT + 1);
                                     }
-                                    
                                     linePtr++;
                                 }
+                                Clay_String clayString = { .chars = arrayOfCellBuffers[arrayOfCellBuffersIndex], .length = cellBufferIndex + 1 };
+                                RenderTextComponent(clayString);
                             }
                         }
                         line = strtok(0, LINE_DELIMITER);
@@ -242,9 +242,9 @@ int main(void) {
         Clay_Raylib_Render(renderCommands, fonts);
         EndDrawing();
         
-        
         for (int i = 0; i < numberOfCells; i++) {
             if (arrayOfCellBuffers[i] != 0)  {
+                printf("Cleaning: %s\n", arrayOfCellBuffers[i]);
                 free(arrayOfCellBuffers[i]);
                 arrayOfCellBuffers[i] = 0;
             }
