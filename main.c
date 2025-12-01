@@ -90,7 +90,6 @@ size_t CountCellsInFile(char* string) {
 void HandleFocusInteraction(Clay_ElementId clayElementId, Clay_PointerData pointerData, intptr_t userData) {
     if (pointerData.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
         searchBarIsInFocus = 1;
-        printf("Search bar in focus: %i\n", searchBarIsInFocus);
     }
 }
 
@@ -145,6 +144,10 @@ char* strstr_insensitive(char* haystack, char* needle) {
         }
 
         haystackPtr++;
+    }
+
+    if (*needlePtr != '\0') {
+        return 0;
     }
 
     return foundPtr;
@@ -278,8 +281,6 @@ int main(void) {
                     
                     while (line != 0) {
                         if (line[0] != '#') {
-                            numberOfValidLinesInFile++;
-
                             Clay_String cells[15] = { 0 };
                             int cellsIndex = 0;
                             int cellBufferIndex = 0;
@@ -333,6 +334,7 @@ int main(void) {
                             arrayOfCellBuffers[++arrayOfCellBuffersIndex] = calloc(sizeof(char), CELL_CHAR_LIMIT + 1);
 
                             if (!shouldCheckForValidLine || (shouldCheckForValidLine && isValidLine)) {
+                                numberOfValidLinesInFile++;
                                 CLAY_AUTO_ID({.layout = {
                                                     .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(50) },
                                                     .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_TOP },
