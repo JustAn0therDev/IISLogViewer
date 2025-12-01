@@ -2,11 +2,16 @@
 #include "include/clay.h"
 #include "renderers/raylib/clay_renderer_raylib.c"
 #include <stdio.h>
+#include <assert.h>
+#include <ctype.h>
 
 const int FONT_ID_BODY_16 = 0;
-const Clay_Color FOREGROUND_COLOR = {0,200,0,255};
-const Clay_Color BACKGROUND_COLOR = {0,0,0,255};
-const Clay_BorderElementConfig BORDER_COLOR = { .width = { .left = 5, .right = 5, .top = 5, .bottom = 5  }, .color = FOREGROUND_COLOR };
+const Clay_Color FOREGROUND_COLOR = {255,255,255,255};
+const Clay_Color BACKGROUND_COLOR = {0,0,140,255};
+const Clay_BorderElementConfig BORDER = { .width = { .left = 5, .right = 5, .top = 5, .bottom = 5  }, .color = FOREGROUND_COLOR };
+int searchBarIsInFocus = 0;
+char searchString[2048] = { 0 };
+int searchStringIndex = 0;
 
 #ifdef _WIN32
 #define LINE_DELIMITER "\r\n"
@@ -82,6 +87,69 @@ size_t CountCellsInFile(char* string) {
     return count;
 }
 
+void HandleFocusInteraction(Clay_ElementId clayElementId, Clay_PointerData pointerData, intptr_t userData) {
+    if (pointerData.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
+        searchBarIsInFocus = 1;
+        printf("Search bar in focus: %i\n", searchBarIsInFocus);
+    }
+}
+
+int ConvertShiftKey(int key) {
+    if (key == KEY_EQUAL)
+        return 43;
+    if (key == KEY_SEMICOLON)
+        return 58;
+    if (key == KEY_COMMA)
+        return 60;
+    if (key == KEY_PERIOD)
+        return 62;
+    if (key == KEY_SLASH)
+        return 63;
+    if (key == KEY_MINUS)
+        return 95;
+    if (key == KEY_GRAVE)
+        return 96;
+    if (key == KEY_LEFT_BRACKET)
+        return 123;
+    if (key == KEY_BACKSLASH)
+        return 124;
+    if (key == KEY_RIGHT_BRACKET)
+        return 125;
+
+    return 0;
+}
+
+char* strstr_insensitive(char* haystack, char* needle) {
+    assert(haystack != 0);
+    assert(needle != 0);
+
+    char* foundPtr = 0;
+
+    char* haystackPtr = haystack;
+    char* needlePtr = needle;
+
+    while (*haystackPtr != '\0') {
+        if (tolower(*haystackPtr) == tolower(*needlePtr)) {
+            if (foundPtr == 0) {
+                foundPtr = haystackPtr;
+            }
+
+            needlePtr++;
+
+            if (*needlePtr == '\0') {
+                break;
+            }
+        } else if (foundPtr != 0) {
+            foundPtr = 0;
+            needlePtr = needle;
+        }
+
+        haystackPtr++;
+    }
+
+    return foundPtr;
+}
+
 int main(void) {
     Clay_Raylib_Initialize(1600, 900, "IIS Log Viewer", FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_HIGHDPI | FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT);
     
@@ -127,12 +195,35 @@ int main(void) {
             
             CLAY(CLAY_ID("SearchBar"), {
                      .layout = {
-                         .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)}
+                         .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(50)}
                      },
-                     .border = BORDER_COLOR,
+                     .border = BORDER,
                      .cornerRadius = CLAY_CORNER_RADIUS(10)
                  }) {
-                RenderTextComponent(CLAY_STRING("SEARCH"));
+                
+                Clay_OnHover(HandleFocusInteraction, (intptr_t)0);
+                
+                if (searchBarIsInFocus) {
+                    int keyPressed = GetKeyPressed();
+                    
+                    if (keyPressed == KEY_ENTER) {
+                        searchBarIsInFocus = 0;
+                    } else if (keyPressed == KEY_BACKSPACE) {
+                        if (searchStringIndex > 0) {
+                            searchString[--searchStringIndex] = 0;
+                        }
+                    } else if (keyPressed != 0) {
+                        if (IsKeyDown(KEY_RIGHT_SHIFT) || IsKeyDown(KEY_LEFT_SHIFT)) {
+                            keyPressed = ConvertShiftKey(keyPressed);
+                        }
+                        
+                        if (keyPressed != 0)
+                            searchString[searchStringIndex++] = (char)keyPressed;
+                    }
+                }
+				
+                Clay_String claySearchString = { .chars = searchString, .length = strlen(searchString) };
+                RenderTextComponent(claySearchString);
             }
             
             CLAY(CLAY_ID("Table"), {
@@ -140,7 +231,7 @@ int main(void) {
                          .layoutDirection = CLAY_TOP_TO_BOTTOM,
                          .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0) }
                      },
-                     .border = BORDER_COLOR,
+                     .border = BORDER,
                      .cornerRadius = CLAY_CORNER_RADIUS(10),
                  }) {
                 // header
@@ -151,7 +242,7 @@ int main(void) {
                              .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER },
                              .childGap = 5
                          },
-                         .border = { .width = { .bottom = 5  }, .color = {0,0,0,255} },
+                         .border = { .width = { .bottom = 5  }, .color = FOREGROUND_COLOR },
                      }) {
                     RenderTextComponent(CLAY_STRING("date"));
                     RenderTextComponent(CLAY_STRING("time"));
@@ -173,7 +264,7 @@ int main(void) {
                 CLAY(CLAY_ID("TableLines"), {
                          .layout = {
                              .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                             .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER },
+                             .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_TOP },
                              .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0) }
                          },
                          .cornerRadius = CLAY_CORNER_RADIUS(10),
@@ -188,35 +279,69 @@ int main(void) {
                     while (line != 0) {
                         if (line[0] != '#') {
                             numberOfValidLinesInFile++;
-                            CLAY_AUTO_ID({.layout = {
-                                                 .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0) },
-                                                 .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER },
-                                             },
-                                             .border = { .width = { .bottom = 1 }, .color = FOREGROUND_COLOR },
-                                         }) {
-                                int cellBufferIndex = 0;
-                                arrayOfCellBuffers[arrayOfCellBuffersIndex] = calloc(sizeof(char), CELL_CHAR_LIMIT + 1);
-                                
-                                char* linePtr = line;
-                                
-                                while (*linePtr != '\0') {
-                                    if (*linePtr != CELL_DELIMITER) {
-                                        if (cellBufferIndex < CELL_CHAR_LIMIT) {
-                                            arrayOfCellBuffers[arrayOfCellBuffersIndex][cellBufferIndex++] = *linePtr;
-                                        }
-                                    } else {
-                                        numberOfCells++;
-                                        Clay_String clayString = { .chars = arrayOfCellBuffers[arrayOfCellBuffersIndex], .length = cellBufferIndex + 1 };
-                                        RenderTextComponent(clayString);
-                                        cellBufferIndex = 0;
-                                        arrayOfCellBuffers[++arrayOfCellBuffersIndex] = calloc(sizeof(char), CELL_CHAR_LIMIT + 1);
+
+                            Clay_String cells[15] = { 0 };
+                            int cellsIndex = 0;
+                            int cellBufferIndex = 0;
+                            
+                            arrayOfCellBuffers[arrayOfCellBuffersIndex] = calloc(sizeof(char), CELL_CHAR_LIMIT + 1);
+                            
+                            char* fullCellValue = calloc(sizeof(char), 1);
+                            int fullCellValueIndex = 0;
+                            
+                            char* linePtr = line;
+
+                            int isValidLine = 0;
+                            int shouldCheckForValidLine = strlen(searchString) > 0;
+                            
+                            while (*linePtr != '\0') {
+                                if (*linePtr != CELL_DELIMITER) {
+                                    if (cellBufferIndex < CELL_CHAR_LIMIT) {
+                                        arrayOfCellBuffers[arrayOfCellBuffersIndex][cellBufferIndex++] = *linePtr;
                                     }
-                                    linePtr++;
+                                    fullCellValue[fullCellValueIndex++] = *linePtr;
+                                    fullCellValue = realloc(fullCellValue, fullCellValueIndex + 1);
+                                    fullCellValue[fullCellValueIndex] = '\0';
+                                } else {
+                                    numberOfCells++;
+                                    Clay_String clayString = { .chars = arrayOfCellBuffers[arrayOfCellBuffersIndex], .length = cellBufferIndex + 1 };
+                                    cells[cellsIndex++] = clayString;
+
+                                    if (shouldCheckForValidLine && strstr_insensitive(fullCellValue, searchString)) {
+                                        isValidLine = 1;
+                                    }
+
+                                    cellBufferIndex = 0;
+                                    arrayOfCellBuffers[++arrayOfCellBuffersIndex] = calloc(sizeof(char), CELL_CHAR_LIMIT + 1);
+                                    free(fullCellValue);
+                                    fullCellValue = calloc(sizeof(char), 1);
+                                    fullCellValueIndex = 0;
                                 }
-                                numberOfCells++;
-                                Clay_String clayString = { .chars = arrayOfCellBuffers[arrayOfCellBuffersIndex], .length = cellBufferIndex + 1 };
-                                arrayOfCellBuffersIndex++;
-                                RenderTextComponent(clayString);
+                                
+                                linePtr++;
+                            }
+
+                            numberOfCells++;
+                            Clay_String clayString = { .chars = arrayOfCellBuffers[arrayOfCellBuffersIndex], .length = cellBufferIndex + 1 };
+                            cells[cellsIndex++] = clayString;
+
+                            if (shouldCheckForValidLine && strstr_insensitive(fullCellValue, searchString)) {
+                                isValidLine = 1;
+                            }
+
+                            cellBufferIndex = 0;
+                            arrayOfCellBuffers[++arrayOfCellBuffersIndex] = calloc(sizeof(char), CELL_CHAR_LIMIT + 1);
+
+                            if (!shouldCheckForValidLine || (shouldCheckForValidLine && isValidLine)) {
+                                CLAY_AUTO_ID({.layout = {
+                                                    .sizing = { .width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(50) },
+                                                    .childAlignment = { .x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_TOP },
+                                                },
+                                                .border = { .width = { .bottom = 1 }, .color = FOREGROUND_COLOR },
+                                            }) {
+                                    for (int i = 0; i < cellsIndex; i++)
+                                        RenderTextComponent(cells[i]);
+                                }
                             }
                         }
                         line = strtok(0, LINE_DELIMITER);
@@ -231,8 +356,14 @@ int main(void) {
                          .layoutDirection = CLAY_LEFT_TO_RIGHT
                      },
                  }) {
-                char foundRecordsBuffer[200] = { 0 };
-                sprintf(foundRecordsBuffer, "Found %i Records", numberOfValidLinesInFile);
+                char foundRecordsBuffer[2248] = { 0 };
+                
+                if (strcmp(searchString, "") == 0) {
+                    sprintf(foundRecordsBuffer, "Found %i records", numberOfValidLinesInFile);
+                } else {
+                    sprintf(foundRecordsBuffer, "Found %i records for '%s'", numberOfValidLinesInFile, searchString);
+                }
+                
                 Clay_String foundRecordsClayString = { .chars = foundRecordsBuffer, .length = strlen(foundRecordsBuffer) };
                 RenderTextComponent(foundRecordsClayString);
             }
